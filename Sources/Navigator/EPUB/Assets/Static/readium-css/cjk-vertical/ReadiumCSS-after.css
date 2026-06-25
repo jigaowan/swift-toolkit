@@ -140,13 +140,17 @@
   /* Prevents options pop-up when long tap in webkit */
   -webkit-touch-callout: none;
 
-  /* The reason why we don’t force -webkit-column-axis is that it switches the column-box model to a paged overflow model.
-     In other words, columns become useless, the sizing of the :root itself will be used for pagination */
-
   /* Ensure the correct writing-mode is used */
   -ms-writing-mode: tb-rl;
   -webkit-writing-mode: vertical-rl;
   writing-mode: vertical-rl;
+}
+
+@supports (-webkit-column-axis: horizontal) {
+  :root:not([style*="readium-scroll-on"]) {
+    /* Use WebKit's paged overflow model so vertical CJK columns advance horizontally. */
+    -webkit-column-axis: horizontal;
+  }
 }
 
 :root:lang(mn-Mong) {
