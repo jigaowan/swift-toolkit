@@ -461,7 +461,7 @@ body {
 /* Page Margins: the user margin is a factor of the page gutter e.g. 0.5, 0.75, 1, 1.25, 1.5, etc. */
 
 :root[style*="--USER__pageMargins"] body {
-  padding: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) 0 !important;
+  padding: 0 calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
 }
 
 @supports (-webkit-column-axis: horizontal) {
@@ -475,6 +475,11 @@ body {
     padding-right: var(--RS__pageGutter) !important;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
+  }
+
+  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) body {
+    padding-left: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
+    padding-right: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
   }
 
   :root:not([style*="readium-scroll-on"]) body:is([epub\:type~="cover"], [epub|type~="cover"], .cover-page, .image-page) {
@@ -502,6 +507,16 @@ body {
     max-width: 100vw !important;
     max-height: 100vh !important;
     object-fit: contain !important;
+  }
+
+  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) body:is([epub\:type~="cover"], [epub|type~="cover"], .cover-page, .image-page) .main {
+    padding-left: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
+    padding-right: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
+    box-sizing: border-box !important;
+  }
+
+  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) body:is([epub\:type~="cover"], [epub|type~="cover"], .cover-page, .image-page) img.fit:only-child {
+    max-width: calc(100vw - (2 * var(--RS__pageGutter) * var(--USER__pageMargins))) !important;
   }
 }
 
