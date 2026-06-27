@@ -477,9 +477,16 @@ body {
     box-decoration-break: clone;
   }
 
-  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) body {
+  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) {
+    --RS__colWidth: calc(100vw - (2 * var(--RS__pageGutter) * var(--USER__pageMargins)));
+    --RS__colGap: calc(2 * var(--RS__pageGutter) * var(--USER__pageMargins));
     padding-left: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
     padding-right: calc(var(--RS__pageGutter) * var(--USER__pageMargins)) !important;
+  }
+
+  :root[style*="--USER__pageMargins"]:not([style*="readium-scroll-on"]) body:not([epub\:type~="cover"]):not([epub|type~="cover"]):not(.cover-page):not(.image-page) {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 
   :root:not([style*="readium-scroll-on"]) body:is([epub\:type~="cover"], [epub|type~="cover"], .cover-page, .image-page) {
