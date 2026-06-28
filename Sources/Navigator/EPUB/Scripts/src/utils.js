@@ -292,24 +292,6 @@ function snapCurrentPosition() {
   document.scrollingElement.scrollLeft = currentOffsetSnapped;
 }
 
-export function scrollByViewport(direction, animated) {
-  if (isScrollModeEnabled()) {
-    return;
-  }
-
-  const delta = direction < 0 ? -1 : 1;
-  const currentOffset = window.scrollX;
-  const currentPage =
-    delta > 0
-      ? Math.floor((currentOffset + 1) / viewportWidth)
-      : Math.ceil((currentOffset - 1) / viewportWidth);
-
-  scrollTo({
-    left: (currentPage + delta) * viewportWidth,
-    animated,
-  });
-}
-
 export function rangeFromLocator(locator) {
   try {
     let locations = locator.locations;
