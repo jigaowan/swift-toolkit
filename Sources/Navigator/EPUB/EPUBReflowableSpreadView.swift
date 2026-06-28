@@ -104,6 +104,11 @@ final class EPUBReflowableSpreadView: EPUBSpreadView {
             bottomConstraint.constant = 0
             scrollView.contentInset = contentInset
 
+        } else if viewModel.verticalText {
+            topConstraint.constant = 0
+            bottomConstraint.constant = 0
+            scrollView.contentInset = .zero
+
         } else {
             topConstraint.constant = contentInset.top
             bottomConstraint.constant = -contentInset.bottom
@@ -194,9 +199,14 @@ final class EPUBReflowableSpreadView: EPUBSpreadView {
         // negative `window.scrollX` values in WKWebView, whereas UIKit's
         // `contentOffset.x` is always non-negative. A relative displacement
         // (`offsetX`) is coordinate-system agnostic and works for both LTR and
-        // RTL.
+        // RTL. Vertical text uses a direction-aware JS helper to recover from
+        // partial native drag offsets before moving to the next viewport page.
         let behavior = options.animated ? "smooth" : "instant"
-        await evaluateScript("window.scrollBy({ left: \(offsetX), behavior: '\(behavior)' });")
+        if viewModel.verticalText {
+            await evaluateScript("readium.scrollByViewport(\(factor), \(options.animated));")
+        } else {
+            await evaluateScript("window.scrollBy({ left: \(offsetX), behavior: '\(behavior)' });")
+        }
 
         if options.animated {
             // Waits for the scroll animation to finish.
@@ -435,5 +445,42 @@ final class EPUBReflowableSpreadView: EPUBSpreadView {
     override func scrollViewDidScroll(_ scrollView: UIScrollView) {
         super.scrollViewDidScroll(scrollView)
         setNeedsNotifyPagesDidChange()
+    }
+
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        guard
+            !viewModel.scroll,
+            viewModel.verticalText
+        else {
+            return
+        }
+
+        let pageWidth = scrollView.bounds.width
+        guard pageWidth > 0 else {
+            return
+        }
+
+        let currentPage = Int(round(scrollView.contentOffset.x / pageWidth))
+        let targetPage = Int(round(targetContentOffset.pointee.x / pageWidth))
+        let direction: EPUBSpreadView.Direction?
+        if targetPage > currentPage {
+            direction = .right
+        } else if targetPage < currentPage {
+            direction = .left
+        } else if abs(velocity.x) > 0.15 {
+            direction = velocity.x > 0 ? .right : .left
+        } else {
+            direction = nil
+        }
+
+        guard let direction else {
+            return
+        }
+
+        targetContentOffset.pointee = scrollView.contentOffset
+
+        Task { @MainActor in
+            await go(to: direction, options: .animated)
+        }
     }
 }
