@@ -8,6 +8,7 @@
 
 import { TextQuoteAnchor } from "./vendor/hypothesis/anchoring/types";
 import { getCurrentSelection } from "./selection";
+import { toNativeRect } from "./rect";
 
 window.addEventListener(
   "error",
@@ -341,6 +342,35 @@ export function rangeFromLocator(locator) {
   }
 
   return null;
+}
+
+export function rectsFromLocator(locator) {
+  let range = rangeFromLocator(locator);
+  if (!range) {
+    return {
+      located: false,
+      href: readium?.link?.href ?? window.location.href,
+      rects: [],
+      bounds: null,
+      writingMode: "",
+      direction: "",
+    };
+  }
+
+  let computed = getComputedStyle(document.documentElement);
+  let rects = Array.from(range.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => toNativeRect(rect));
+  let bounds = toNativeRect(range.getBoundingClientRect());
+
+  return {
+    located: true,
+    href: readium?.link?.href ?? window.location.href,
+    rects,
+    bounds,
+    writingMode: computed.writingMode || computed.webkitWritingMode || "",
+    direction: computed.direction || document.documentElement.dir || "ltr",
+  };
 }
 
 /// User Settings.

@@ -16,6 +16,7 @@ import {
   scrollToId,
   scrollToPosition,
   scrollToLocator,
+  rectsFromLocator,
   setProperty,
   setCSSProperties,
 } from "./utils";
@@ -27,6 +28,7 @@ global.readium = {
   scrollToId: scrollToId,
   scrollToPosition: scrollToPosition,
   scrollToLocator: scrollToLocator,
+  rectsFromLocator: rectsFromLocator,
   scrollLeft: scrollLeft,
   scrollRight: scrollRight,
   setCSSProperties: setCSSProperties,
