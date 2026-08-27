@@ -920,7 +920,16 @@ open class EPUBNavigatorViewController: InputObservableViewController,
             return
         }
 
-        view.backgroundColor = settings.effectiveBackgroundColor.uiColor
+        let backgroundColor = settings.effectiveBackgroundColor.uiColor
+        view.backgroundColor = backgroundColor
+
+        switch publication.metadata.epubLayout {
+        case .fixed:
+            paginationView?.backgroundColor = backgroundColor
+        case .reflowable:
+            paginationView?.backgroundColor = .clear
+        }
+
         paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
     }
 
