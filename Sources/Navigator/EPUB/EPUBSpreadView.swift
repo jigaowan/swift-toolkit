@@ -29,6 +29,10 @@ protocol EPUBSpreadViewDelegate: AnyObject {
     /// Called when the pages visible in the spread changed.
     func spreadViewPagesDidChange(_ spreadView: EPUBSpreadView)
 
+    /// Called when the viewport of a fixed-layout spread changes through zoom
+    /// or pan.
+    func spreadViewFixedLayoutViewportDidChange(_ spreadView: EPUBSpreadView)
+
     /// Called when the spread view needs to present a view controller.
     func spreadView(_ spreadView: EPUBSpreadView, present viewController: UIViewController)
 
@@ -139,6 +143,15 @@ class EPUBSpreadView: UIView, Loggable, PageView {
         webView.uiDelegate = self
         scrollView.delegate = self
     }
+
+    /// Hooks used by fixed-layout spreads without duplicating the scroll view
+    /// delegate conformance owned by the base spread.
+    func spreadViewForZooming(in scrollView: UIScrollView) -> UIView? { nil }
+    func spreadScrollViewDidScroll(_ scrollView: UIScrollView) {}
+    func spreadScrollViewDidZoom(_ scrollView: UIScrollView) {}
+    func spreadScrollViewWillBeginDragging(_ scrollView: UIScrollView) {}
+    func spreadScrollViewWillBeginZooming(_ scrollView: UIScrollView) {}
+    func spreadScrollViewDidEndZooming(_ scrollView: UIScrollView) {}
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
@@ -673,16 +686,33 @@ extension EPUBSpreadView: WKNavigationDelegate {
 }
 
 extension EPUBSpreadView: UIScrollViewDelegate {
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        spreadViewForZooming(in: scrollView)
+    }
+
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
         scrollView.isUserInteractionEnabled = true
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         webView.clearSelection()
+        spreadScrollViewWillBeginDragging(scrollView)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        // Do not remove, overridden in subclasses.
+        spreadScrollViewDidScroll(scrollView)
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        spreadScrollViewDidZoom(scrollView)
+    }
+
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        spreadScrollViewWillBeginZooming(scrollView)
+    }
+
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        spreadScrollViewDidEndZooming(scrollView)
     }
 }
 

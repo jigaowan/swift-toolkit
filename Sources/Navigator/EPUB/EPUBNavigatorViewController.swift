@@ -17,10 +17,22 @@ import WebKit
     // MARK: - WebView Customization
 
     func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts userContentController: WKUserContentController)
+
+    /// Called when the visible fixed-layout spread is zoomed or panned.
+    func navigator(
+        _ navigator: EPUBNavigatorViewController,
+        fixedLayoutViewportDidChange state: EPUBFixedLayoutZoomState
+    )
 }
 
 public extension EPUBNavigatorDelegate {
     func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts userContentController: WKUserContentController) {}
+
+    /// Called when the visible fixed-layout spread is zoomed or panned.
+    func navigator(
+        _ navigator: EPUBNavigatorViewController,
+        fixedLayoutViewportDidChange state: EPUBFixedLayoutZoomState
+    ) {}
 }
 
 public typealias EPUBContentInsets = (top: CGFloat, bottom: CGFloat)
@@ -386,6 +398,10 @@ open class EPUBNavigatorViewController: InputObservableViewController,
         // the current resource. We can use this to go to the next resource.
         view.accessibilityTraits.insert(.causesPageTurn)
 
+        if publication.metadata.layout == .fixed {
+            view.addGestureRecognizer(fixedLayoutPinchGestureRecognizer)
+        }
+
         Task {
             await initialize()
         }
@@ -547,6 +563,59 @@ open class EPUBNavigatorViewController: InputObservableViewController,
 
     private var paginationView: PaginationView?
 
+    private lazy var fixedLayoutPinchGestureRecognizer: UIPinchGestureRecognizer = {
+        let recognizer = UIPinchGestureRecognizer(
+            target: self,
+            action: #selector(handleFixedLayoutPinch(_:))
+        )
+        recognizer.cancelsTouchesInView = true
+        recognizer.delegate = self
+        return recognizer
+    }()
+    private var fixedLayoutPinchInitialScale: CGFloat = 1
+    private var isFixedLayoutPinching = false
+    private var isFixedLayoutContentInteractionSuspended = false
+    private var fixedLayoutOverlayView: UIView?
+    private weak var displayedFixedSpreadView: EPUBFixedSpreadView?
+
+    private var currentFixedSpreadView: EPUBFixedSpreadView? {
+        paginationView?.currentView as? EPUBFixedSpreadView
+    }
+
+    @objc private func handleFixedLayoutPinch(_ recognizer: UIPinchGestureRecognizer) {
+        guard let spreadView = currentFixedSpreadView else { return }
+
+        switch recognizer.state {
+        case .began:
+            isFixedLayoutPinching = true
+            fixedLayoutPinchInitialScale = spreadView.fixedLayoutZoomState.scale
+            paginationView?.isScrollEnabled = false
+
+        case .changed:
+            let point = view.convert(recognizer.location(in: view), to: spreadView)
+            spreadView.zoomFixedLayout(
+                to: fixedLayoutPinchInitialScale * recognizer.scale,
+                at: point,
+                animated: false
+            )
+
+        case .ended, .cancelled, .failed:
+            isFixedLayoutPinching = false
+            paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+            delegate?.navigator(
+                self,
+                fixedLayoutViewportDidChange: spreadView.fixedLayoutZoomState
+            )
+
+        case .possible:
+            break
+
+        @unknown default:
+            isFixedLayoutPinching = false
+            paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+        }
+    }
+
     private func makePaginationView(hasPositions: Bool) -> PaginationView {
         let view = PaginationView(
             frame: .zero,
@@ -654,6 +723,9 @@ open class EPUBNavigatorViewController: InputObservableViewController,
 
     private var isPaginationViewScrollingEnabled: Bool {
         !(config.disablePageTurnsWhileScrolling && settings.scroll)
+            && !isFixedLayoutPinching
+            && !isFixedLayoutContentInteractionSuspended
+            && !(currentFixedSpreadView?.fixedLayoutZoomState.isZoomed ?? false)
     }
 
     public var presentation: VisualNavigatorPresentation {
@@ -926,6 +998,11 @@ open class EPUBNavigatorViewController: InputObservableViewController,
         switch publication.metadata.epubLayout {
         case .fixed:
             paginationView?.backgroundColor = backgroundColor
+            if let loadedViews = paginationView?.loadedViews.values {
+                for case let spreadView as EPUBFixedSpreadView in loadedViews {
+                    spreadView.updateBackgroundColor(backgroundColor)
+                }
+            }
         case .reflowable:
             paginationView?.backgroundColor = .clear
         }
@@ -1235,6 +1312,15 @@ extension EPUBNavigatorViewController: EPUBSpreadViewDelegate {
         }
     }
 
+    func spreadViewFixedLayoutViewportDidChange(_ spreadView: EPUBSpreadView) {
+        guard spreadView === currentFixedSpreadView else { return }
+        paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+        delegate?.navigator(
+            self,
+            fixedLayoutViewportDidChange: fixedLayoutZoomState
+        )
+    }
+
     func spreadView(_ spreadView: EPUBSpreadView, present viewController: UIViewController) {
         present(viewController, animated: true)
     }
@@ -1280,10 +1366,81 @@ extension EPUBNavigatorViewController: PaginationViewDelegate {
         // Note that you should set the delegate before you load views
         // otherwise, when open the publication, you may miss the first
         // invocation.
+        if let spreadView = currentFixedSpreadView,
+           displayedFixedSpreadView !== spreadView
+        {
+            displayedFixedSpreadView?.installFixedLayoutOverlayView(nil)
+            displayedFixedSpreadView = spreadView
+            spreadView.resetFixedLayoutZoom(animated: false)
+            spreadView.setContentInteractionSuspended(isFixedLayoutContentInteractionSuspended)
+        }
+        paginationView.isScrollEnabled = isPaginationViewScrollingEnabled
         updateCurrentLocation()
     }
 
     func paginationView(_ paginationView: PaginationView, positionCountAtIndex index: Int) -> Int {
         spreads[index].positionCount(in: readingOrder, positionsByReadingOrder: positionsByReadingOrder)
+    }
+}
+
+// MARK: - Fixed-layout zoom
+
+extension EPUBNavigatorViewController: EPUBFixedLayoutZooming {
+    public var fixedLayoutZoomState: EPUBFixedLayoutZoomState {
+        currentFixedSpreadView?.fixedLayoutZoomState
+            ?? EPUBFixedLayoutZoomState(scale: 1)
+    }
+
+    public func zoomFixedLayout(
+        to scale: CGFloat,
+        at point: CGPoint,
+        animated: Bool
+    ) {
+        guard let spreadView = currentFixedSpreadView else { return }
+        if scale > 1.001 {
+            paginationView?.isScrollEnabled = false
+        }
+        let spreadPoint = view.convert(point, to: spreadView)
+        spreadView.zoomFixedLayout(to: scale, at: spreadPoint, animated: animated)
+    }
+
+    public func resetFixedLayoutZoom(animated: Bool) {
+        currentFixedSpreadView?.resetFixedLayoutZoom(animated: animated)
+    }
+
+    public func setFixedLayoutOverlayView(_ view: UIView?) {
+        if fixedLayoutOverlayView !== view {
+            fixedLayoutOverlayView?.removeFromSuperview()
+        }
+        fixedLayoutOverlayView = view
+        currentFixedSpreadView?.installFixedLayoutOverlayView(view)
+    }
+
+    public func setFixedLayoutContentInteractionSuspended(_ suspended: Bool) {
+        isFixedLayoutContentInteractionSuspended = suspended
+        currentFixedSpreadView?.setContentInteractionSuspended(suspended)
+        paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+    }
+
+    public func makeFixedLayoutSnapshot() async throws -> EPUBFixedLayoutSnapshot? {
+        guard let spreadView = currentFixedSpreadView else { return nil }
+        let image = try await spreadView.makeFixedLayoutSnapshot()
+        let frame = view.convert(spreadView.bounds, from: spreadView)
+        return EPUBFixedLayoutSnapshot(image: image, frame: frame)
+    }
+}
+
+extension EPUBNavigatorViewController: UIGestureRecognizerDelegate {
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === fixedLayoutPinchGestureRecognizer else { return true }
+        return currentFixedSpreadView != nil
+    }
+
+    public func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === fixedLayoutPinchGestureRecognizer
+            || otherGestureRecognizer === fixedLayoutPinchGestureRecognizer
     }
 }
