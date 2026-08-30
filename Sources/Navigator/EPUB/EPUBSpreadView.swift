@@ -33,6 +33,13 @@ protocol EPUBSpreadViewDelegate: AnyObject {
     /// or pan.
     func spreadViewFixedLayoutViewportDidChange(_ spreadView: EPUBSpreadView)
 
+    /// Called before the fixed-layout spread's native pinch starts changing
+    /// its zoom scale.
+    func spreadViewFixedLayoutZoomWillBegin(_ spreadView: EPUBSpreadView)
+
+    /// Called after the fixed-layout spread's native pinch finishes.
+    func spreadViewFixedLayoutZoomDidEnd(_ spreadView: EPUBSpreadView)
+
     /// Called when the spread view needs to present a view controller.
     func spreadView(_ spreadView: EPUBSpreadView, present viewController: UIViewController)
 

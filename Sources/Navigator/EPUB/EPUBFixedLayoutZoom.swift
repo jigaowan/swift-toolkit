@@ -58,46 +58,61 @@ public struct EPUBFixedLayoutSnapshot {
 
 enum EPUBFixedLayoutZoomMath {
     static func targetRect(
-        currentScale: CGFloat,
         targetScale: CGFloat,
-        contentOffset: CGPoint,
-        anchor: CGPoint,
+        contentPoint: CGPoint,
+        viewportAnchor: CGPoint,
         visibleSize: CGSize
     ) -> CGRect {
-        let currentScale = max(currentScale, 0.001)
         let targetScale = max(targetScale, 0.001)
-        let contentPoint = CGPoint(
-            x: (contentOffset.x + anchor.x) / currentScale,
-            y: (contentOffset.y + anchor.y) / currentScale
-        )
-        let targetOffset = CGPoint(
-            x: contentPoint.x * targetScale - anchor.x,
-            y: contentPoint.y * targetScale - anchor.y
-        )
         return CGRect(
-            x: targetOffset.x / targetScale,
-            y: targetOffset.y / targetScale,
+            x: contentPoint.x - viewportAnchor.x / targetScale,
+            y: contentPoint.y - viewportAnchor.y / targetScale,
             width: visibleSize.width / targetScale,
             height: visibleSize.height / targetScale
         )
     }
 
-    static func clampedOffset(
-        _ proposed: CGFloat,
-        contentOrigin: CGFloat,
+    static func fittedInsets(
+        contentSize: CGSize,
+        visibleSize: CGSize,
+        fittedFrame: CGRect
+    ) -> UIEdgeInsets {
+        let horizontal = axisInsets(
+            contentLength: contentSize.width,
+            visibleLength: visibleSize.width,
+            fittedOrigin: fittedFrame.minX,
+            fittedLength: fittedFrame.width
+        )
+        let vertical = axisInsets(
+            contentLength: contentSize.height,
+            visibleLength: visibleSize.height,
+            fittedOrigin: fittedFrame.minY,
+            fittedLength: fittedFrame.height
+        )
+        return UIEdgeInsets(
+            top: vertical.leading,
+            left: horizontal.leading,
+            bottom: vertical.trailing,
+            right: horizontal.trailing
+        )
+    }
+
+    private static func axisInsets(
         contentLength: CGFloat,
         visibleLength: CGFloat,
-        maximumOffset: CGFloat
-    ) -> CGFloat {
-        let pageBounded: CGFloat
-        if contentLength <= visibleLength + 0.5 {
-            pageBounded = contentOrigin + (contentLength - visibleLength) / 2
-        } else {
-            pageBounded = min(
-                max(proposed, contentOrigin),
-                contentOrigin + contentLength - visibleLength
-            )
+        fittedOrigin: CGFloat,
+        fittedLength: CGFloat
+    ) -> (leading: CGFloat, trailing: CGFloat) {
+        let remainingSpace = max(visibleLength - contentLength, 0)
+        guard remainingSpace > 0 else { return (0, 0) }
+
+        let fittedSpace = max(visibleLength - fittedLength, 0)
+        guard fittedSpace > 0.5 else {
+            return (remainingSpace / 2, remainingSpace / 2)
         }
-        return min(max(pageBounded, 0), maximumOffset)
+
+        let leadingRatio = min(max(fittedOrigin / fittedSpace, 0), 1)
+        let leading = remainingSpace * leadingRatio
+        return (leading, remainingSpace - leading)
     }
 }

@@ -398,10 +398,6 @@ open class EPUBNavigatorViewController: InputObservableViewController,
         // the current resource. We can use this to go to the next resource.
         view.accessibilityTraits.insert(.causesPageTurn)
 
-        if publication.metadata.layout == .fixed {
-            view.addGestureRecognizer(fixedLayoutPinchGestureRecognizer)
-        }
-
         Task {
             await initialize()
         }
@@ -563,16 +559,6 @@ open class EPUBNavigatorViewController: InputObservableViewController,
 
     private var paginationView: PaginationView?
 
-    private lazy var fixedLayoutPinchGestureRecognizer: UIPinchGestureRecognizer = {
-        let recognizer = UIPinchGestureRecognizer(
-            target: self,
-            action: #selector(handleFixedLayoutPinch(_:))
-        )
-        recognizer.cancelsTouchesInView = true
-        recognizer.delegate = self
-        return recognizer
-    }()
-    private var fixedLayoutPinchInitialScale: CGFloat = 1
     private var isFixedLayoutPinching = false
     private var isFixedLayoutContentInteractionSuspended = false
     private var fixedLayoutOverlayView: UIView?
@@ -580,40 +566,6 @@ open class EPUBNavigatorViewController: InputObservableViewController,
 
     private var currentFixedSpreadView: EPUBFixedSpreadView? {
         paginationView?.currentView as? EPUBFixedSpreadView
-    }
-
-    @objc private func handleFixedLayoutPinch(_ recognizer: UIPinchGestureRecognizer) {
-        guard let spreadView = currentFixedSpreadView else { return }
-
-        switch recognizer.state {
-        case .began:
-            isFixedLayoutPinching = true
-            fixedLayoutPinchInitialScale = spreadView.fixedLayoutZoomState.scale
-            paginationView?.isScrollEnabled = false
-
-        case .changed:
-            let point = view.convert(recognizer.location(in: view), to: spreadView)
-            spreadView.zoomFixedLayout(
-                to: fixedLayoutPinchInitialScale * recognizer.scale,
-                at: point,
-                animated: false
-            )
-
-        case .ended, .cancelled, .failed:
-            isFixedLayoutPinching = false
-            paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
-            delegate?.navigator(
-                self,
-                fixedLayoutViewportDidChange: spreadView.fixedLayoutZoomState
-            )
-
-        case .possible:
-            break
-
-        @unknown default:
-            isFixedLayoutPinching = false
-            paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
-        }
     }
 
     private func makePaginationView(hasPositions: Bool) -> PaginationView {
@@ -1314,7 +1266,39 @@ extension EPUBNavigatorViewController: EPUBSpreadViewDelegate {
 
     func spreadViewFixedLayoutViewportDidChange(_ spreadView: EPUBSpreadView) {
         guard spreadView === currentFixedSpreadView else { return }
+        let previousPaginationState = paginationView?.isScrollEnabled
+        let desiredPaginationState = isPaginationViewScrollingEnabled
+        paginationView?.isScrollEnabled = desiredPaginationState
+        if previousPaginationState != desiredPaginationState {
+            log(
+                .info,
+                "fixed-zoom pagination event=viewportChanged previous=\(previousPaginationState ?? false) current=\(paginationView?.isScrollEnabled ?? false) desired=\(desiredPaginationState) scale=\(diagnosticFixedZoomNumber(fixedLayoutZoomState.scale)) pinching=\(isFixedLayoutPinching) suspended=\(isFixedLayoutContentInteractionSuspended)"
+            )
+        }
+        delegate?.navigator(
+            self,
+            fixedLayoutViewportDidChange: fixedLayoutZoomState
+        )
+    }
+
+    func spreadViewFixedLayoutZoomWillBegin(_ spreadView: EPUBSpreadView) {
+        guard spreadView === currentFixedSpreadView else { return }
+        isFixedLayoutPinching = true
+        paginationView?.isScrollEnabled = false
+        log(
+            .info,
+            "fixed-zoom navigator nativePinch event=began scale=\(diagnosticFixedZoomNumber(fixedLayoutZoomState.scale)) paginationActual=\(paginationView?.isScrollEnabled ?? false) suspended=\(isFixedLayoutContentInteractionSuspended)"
+        )
+    }
+
+    func spreadViewFixedLayoutZoomDidEnd(_ spreadView: EPUBSpreadView) {
+        guard spreadView === currentFixedSpreadView else { return }
+        isFixedLayoutPinching = false
         paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+        log(
+            .info,
+            "fixed-zoom navigator nativePinch event=ended scale=\(diagnosticFixedZoomNumber(fixedLayoutZoomState.scale)) paginationActual=\(paginationView?.isScrollEnabled ?? false) paginationDesired=\(isPaginationViewScrollingEnabled)"
+        )
         delegate?.navigator(
             self,
             fixedLayoutViewportDidChange: fixedLayoutZoomState
@@ -1369,6 +1353,11 @@ extension EPUBNavigatorViewController: PaginationViewDelegate {
         if let spreadView = currentFixedSpreadView,
            displayedFixedSpreadView !== spreadView
         {
+            isFixedLayoutPinching = false
+            log(
+                .info,
+                "fixed-zoom spread event=displayedSpreadChanged previous=\(displayedFixedSpreadView == nil ? "none" : "present") overlay=\(fixedLayoutOverlayView != nil)"
+            )
             displayedFixedSpreadView?.installFixedLayoutOverlayView(nil)
             displayedFixedSpreadView = spreadView
             spreadView.resetFixedLayoutZoom(animated: false)
@@ -1397,6 +1386,10 @@ extension EPUBNavigatorViewController: EPUBFixedLayoutZooming {
         animated: Bool
     ) {
         guard let spreadView = currentFixedSpreadView else { return }
+        log(
+            .info,
+            "fixed-zoom navigator action=zoom requestedScale=\(diagnosticFixedZoomNumber(scale)) point=\(diagnosticFixedZoomPoint(point)) animated=\(animated) scaleBefore=\(diagnosticFixedZoomNumber(spreadView.fixedLayoutZoomState.scale))"
+        )
         if scale > 1.001 {
             paginationView?.isScrollEnabled = false
         }
@@ -1405,6 +1398,10 @@ extension EPUBNavigatorViewController: EPUBFixedLayoutZooming {
     }
 
     public func resetFixedLayoutZoom(animated: Bool) {
+        log(
+            .info,
+            "fixed-zoom navigator action=reset animated=\(animated) scaleBefore=\(diagnosticFixedZoomNumber(fixedLayoutZoomState.scale))"
+        )
         currentFixedSpreadView?.resetFixedLayoutZoom(animated: animated)
     }
 
@@ -1417,30 +1414,34 @@ extension EPUBNavigatorViewController: EPUBFixedLayoutZooming {
     }
 
     public func setFixedLayoutContentInteractionSuspended(_ suspended: Bool) {
+        guard isFixedLayoutContentInteractionSuspended != suspended else { return }
+        log(
+            .info,
+            "fixed-zoom navigator interaction suspended=\(suspended) previous=\(isFixedLayoutContentInteractionSuspended) scale=\(diagnosticFixedZoomNumber(fixedLayoutZoomState.scale)) paginationBefore=\(paginationView?.isScrollEnabled ?? false)"
+        )
         isFixedLayoutContentInteractionSuspended = suspended
         currentFixedSpreadView?.setContentInteractionSuspended(suspended)
         paginationView?.isScrollEnabled = isPaginationViewScrollingEnabled
+        log(
+            .info,
+            "fixed-zoom navigator interaction applied paginationAfter=\(paginationView?.isScrollEnabled ?? false) paginationDesired=\(isPaginationViewScrollingEnabled)"
+        )
     }
 
     public func makeFixedLayoutSnapshot() async throws -> EPUBFixedLayoutSnapshot? {
         guard let spreadView = currentFixedSpreadView else { return nil }
-        let image = try await spreadView.makeFixedLayoutSnapshot()
-        let frame = view.convert(spreadView.bounds, from: spreadView)
-        return EPUBFixedLayoutSnapshot(image: image, frame: frame)
+        guard let snapshot = try await spreadView.makeFixedLayoutSnapshot() else { return nil }
+        let frame = view.convert(snapshot.frame, from: spreadView)
+        return EPUBFixedLayoutSnapshot(image: snapshot.image, frame: frame)
     }
 }
 
-extension EPUBNavigatorViewController: UIGestureRecognizerDelegate {
-    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureRecognizer === fixedLayoutPinchGestureRecognizer else { return true }
-        return currentFixedSpreadView != nil
+private extension EPUBNavigatorViewController {
+    func diagnosticFixedZoomNumber(_ value: CGFloat) -> String {
+        String(format: "%.3f", value)
     }
 
-    public func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        gestureRecognizer === fixedLayoutPinchGestureRecognizer
-            || otherGestureRecognizer === fixedLayoutPinchGestureRecognizer
+    func diagnosticFixedZoomPoint(_ point: CGPoint) -> String {
+        "\(diagnosticFixedZoomNumber(point.x)),\(diagnosticFixedZoomNumber(point.y))"
     }
 }

@@ -153,7 +153,14 @@ export function FixedPage(iframeId, pageType) {
 
     // Sets the viewport of the wrapper page (this page) to scale the iframe.
     var viewport = document.querySelector("meta[name=viewport]");
-    viewport.content = "initial-scale=" + scale + ", minimum-scale=" + scale;
+    viewport.content =
+      "initial-scale=" +
+      scale +
+      ", minimum-scale=" +
+      scale +
+      ", maximum-scale=" +
+      scale +
+      ", user-scalable=no";
   }
 
   // Sets the iframe source URL.
