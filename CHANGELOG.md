@@ -2,13 +2,26 @@
 
 All notable changes to this project will be documented in this file. Take a look at [the migration guide](docs/Migration%20Guide.md) to upgrade between two major versions.
 
-## [Unreleased]
+<!-- ## [Unreleased] -->
+
+## [3.11.0] - 2026-07-17
 
 ### Added
+
+#### Navigator
+
+* Added the `AudioSessionManaging` protocol, letting apps provide their own audio session manager instead of the built-in `AudioSession` (contributed by [@svenmeyers89](https://github.com/readium/swift-toolkit/pull/856)).
 
 #### LCP
 
 * `LCPService` has a new `addPassphrase(_:isHashed:userID:provider:)` method to store a passphrase candidate in the repository without opening a license first. Useful to preload a passphrase ahead of time (e.g. from a catalog).
+* `LCPClient` has a new `getSupportedLCPProfileURIs()` requirement, letting the toolkit report `LCPError.licenseProfileNotSupported` based on the profiles the embedded liblcp actually supports. Update your `LCPClient` facade to forward `R2LCPClient.getSupportedLCPProfileURIs()` (a default implementation is provided for backward compatibility).
+
+### Changed
+
+#### LCP
+
+* The auto-generated LCP device ID is now stored in the Keychain instead of `UserDefaults`, so it survives an app delete/reinstall and no longer needlessly consumes a license's device-registration slots. Existing IDs are automatically migrated from `UserDefaults`.
 
 ### Fixed
 
@@ -1272,3 +1285,4 @@ progression. Now if no reading progression is set, the `effectiveReadingProgress
 [3.8.0]: https://github.com/readium/swift-toolkit/compare/3.7.0...3.8.0
 [3.9.0]: https://github.com/readium/swift-toolkit/compare/3.8.0...3.9.0
 [3.10.0]: https://github.com/readium/swift-toolkit/compare/3.9.0...3.10.0
+[3.11.0]: https://github.com/readium/swift-toolkit/compare/3.10.0...3.11.0
